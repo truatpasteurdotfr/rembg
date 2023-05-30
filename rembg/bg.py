@@ -1,6 +1,6 @@
 import io
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 from cv2 import (
@@ -11,15 +11,15 @@ from cv2 import (
     getStructuringElement,
     morphologyEx,
 )
-from PIL import Image
+from PIL import Image, ImageOps
 from PIL.Image import Image as PILImage
 from pymatting.alpha.estimate_alpha_cf import estimate_alpha_cf
 from pymatting.foreground.estimate_foreground_ml import estimate_foreground_ml
 from pymatting.util.util import stack_images
 from scipy.ndimage import binary_erosion
 
-from .session_base import BaseSession
 from .session_factory import new_session
+from .sessions.base import BaseSession
 
 kernel = getStructuringElement(MORPH_ELLIPSE, (3, 3))
 
@@ -113,6 +113,10 @@ def apply_background_color(img: PILImage, color: Tuple[int, int, int, int]) -> P
     return colored_image
 
 
+def fix_image_orientation(img: PILImage) -> PILImage:
+    return ImageOps.exif_transpose(img)
+
+
 def remove(
     data: Union[bytes, PILImage, np.ndarray],
     alpha_matting: bool = False,
@@ -123,6 +127,8 @@ def remove(
     only_mask: bool = False,
     post_process_mask: bool = False,
     bgcolor: Optional[Tuple[int, int, int, int]] = None,
+    *args: Optional[Any],
+    **kwargs: Optional[Any]
 ) -> Union[bytes, PILImage, np.ndarray]:
     if isinstance(data, PILImage):
         return_type = ReturnType.PILLOW
@@ -136,10 +142,13 @@ def remove(
     else:
         raise ValueError("Input type {} is not supported.".format(type(data)))
 
-    if session is None:
-        session = new_session("u2net")
+    # Fix image orientation
+    img = fix_image_orientation(img)
 
-    masks = session.predict(img)
+    if session is None:
+        session = new_session("u2net", *args, **kwargs)
+
+    masks = session.predict(img, *args, **kwargs)
     cutouts = []
 
     for mask in masks:
